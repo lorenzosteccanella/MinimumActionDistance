@@ -4,31 +4,598 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Learning the Minimum Action Distance</title>
+<meta name="description" content="Learning the Minimum Action Distance (MAD) — a self-supervised, action- and reward-free state representation for reinforcement learning.">
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [['\\(', '\\)']], displayMath: [['\\[', '\\]']] },
+    svg: { fontCache: 'global' }
+  };
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-svg.js" id="MathJax-script" async></script>
 <style>
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    max-width: 700px;
-    margin: 8rem auto;
-    padding: 0 1.5rem;
-    text-align: center;
-    color: #1a1a1a;
+  :root {
+    --bg: #ffffff;
+    --bg-alt: #f6f7f9;
+    --text: #1b1e23;
+    --text-dim: #55606c;
+    --border: #e3e6ea;
+    --accent: #2454a8;
+    --accent-soft: #eef3fb;
+    --card-bg: #ffffff;
+    --code-bg: #f3f4f6;
   }
+  :root[data-theme="dark"] {
+    --bg: #14161a;
+    --bg-alt: #1b1e24;
+    --text: #e7e9ec;
+    --text-dim: #a3abb5;
+    --border: #2b2f36;
+    --accent: #7aa7e8;
+    --accent-soft: #1c2632;
+    --card-bg: #1b1e24;
+    --code-bg: #20242b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14161a;
+      --bg-alt: #1b1e24;
+      --text: #e7e9ec;
+      --text-dim: #a3abb5;
+      --border: #2b2f36;
+      --accent: #7aa7e8;
+      --accent-soft: #1c2632;
+      --card-bg: #1b1e24;
+      --code-bg: #20242b;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+  }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+  }
+  .wrap {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 3.5rem 1.5rem 5rem;
+  }
+
+  /* Header */
+  header { text-align: center; margin-bottom: 2.5rem; }
   h1 {
     font-size: 2rem;
-    font-weight: 600;
+    font-weight: 650;
     line-height: 1.3;
+    margin: 0 0 0.9rem;
   }
-  a {
-    color: #0645ad;
+  .authors { font-size: 1.02rem; color: var(--text-dim); margin: 0 0 0.35rem; }
+  .affil { font-size: 0.88rem; color: var(--text-dim); margin: 0 0 1.4rem; }
+  .venue {
+    display: inline-block;
+    font-size: 0.8rem;
+    letter-spacing: 0.02em;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.25rem 0.85rem;
+    margin-bottom: 1.4rem;
+  }
+  .links { display: flex; gap: 0.6rem; justify-content: center; flex-wrap: wrap; }
+  .links a {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
     text-decoration: none;
+    color: var(--text);
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    font-size: 0.92rem;
+    transition: border-color 0.15s ease;
   }
-  a:hover {
-    text-decoration: underline;
+  .links a:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Highlight callout */
+  .callout {
+    margin: 1.6rem 0;
+    padding: 1.1rem 1.4rem;
+    text-align: center;
+    background: var(--accent-soft);
+    border: 1px solid var(--accent);
+    border-radius: 12px;
+  }
+  .callout-title {
+    margin: 0 0 0.7rem;
+    font-size: 1.08rem;
+    font-weight: 700;
+    color: var(--accent);
+  }
+  .pill-row {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .pill {
+    display: inline-block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.3rem 0.9rem;
+  }
+
+  /* Sections */
+  section { margin-top: 3rem; }
+  h2 {
+    font-size: 1.3rem;
+    font-weight: 650;
+    margin: 0 0 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+  h3 {
+    font-size: 1.05rem;
+    font-weight: 650;
+    margin: 1.6rem 0 0.6rem;
+  }
+  p { margin: 0.8rem 0; color: var(--text); }
+  .lede {
+    font-size: 1.05rem;
+    color: var(--text-dim);
+  }
+  ul, ol { padding-left: 1.3rem; }
+  li { margin: 0.35rem 0; }
+  strong { font-weight: 650; }
+  code {
+    background: var(--code-bg);
+    border-radius: 4px;
+    padding: 0.1rem 0.35rem;
+    font-size: 0.88em;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  /* Figures */
+  figure { margin: 1.4rem 0; text-align: center; }
+  figure img, figure svg { max-width: 100%; height: auto; }
+  .fig-card {
+    background: #ffffff;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.9rem;
+    overflow-x: auto;
+  }
+  figcaption {
+    margin-top: 0.6rem;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    text-align: left;
+    line-height: 1.5;
+  }
+
+  /* Constraint / definition boxes */
+  .box {
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+    padding: 1rem 1.2rem;
+    margin: 1rem 0;
+  }
+  .box .label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+    font-weight: 650;
+    margin-bottom: 0.4rem;
+  }
+  .eq-scroll { overflow-x: auto; }
+
+  /* Two-column grid for env / algo cards */
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin: 1.2rem 0;
+  }
+  @media (max-width: 620px) {
+    .grid-2 { grid-template-columns: 1fr; }
+  }
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.1rem;
+  }
+  .card h4 {
+    margin: 0 0 0.4rem;
+    font-size: 0.98rem;
+    font-weight: 650;
+  }
+  .card p { margin: 0; font-size: 0.9rem; color: var(--text-dim); }
+
+  /* Env strip */
+  .env-strip {
+    display: flex;
+    gap: 0.8rem;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin: 1rem 0;
+  }
+  .env-strip figure { margin: 0; flex: 1 1 160px; max-width: 220px; }
+  .env-strip .fig-card { background: #fff; }
+  .env-strip img { max-height: 140px; width: auto; }
+
+  /* Table */
+  .table-scroll { overflow-x: auto; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.86rem;
+    min-width: 620px;
+  }
+  th, td {
+    border: 1px solid var(--border);
+    padding: 0.5rem 0.65rem;
+    text-align: center;
+  }
+  th { background: var(--bg-alt); font-weight: 650; }
+  td:first-child, th:first-child { text-align: left; }
+  td.best { font-weight: 700; color: var(--accent); }
+
+  /* Citation */
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+    overflow-x: auto;
+    font-size: 0.82rem;
+  }
+
+  footer {
+    margin-top: 3.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border);
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    text-align: center;
   }
 </style>
 </head>
 <body>
-  <h1>Learning the Minimum Action Distance</h1>
-  <p><a href="https://arxiv.org/abs/2506.09276">arXiv:2506.09276</a></p>
+<div class="wrap">
+
+  <header>
+    <h1>Learning the Minimum Action Distance</h1>
+    <p class="authors">Lorenzo Steccanella &nbsp;·&nbsp; Joshua B. Evans &nbsp;·&nbsp; Özgür Şimşek &nbsp;·&nbsp; Anders Jonsson</p>
+    <p class="affil">Universitat Pompeu Fabra, Barcelona &nbsp;&nbsp;|&nbsp;&nbsp; University of Bath</p>
+    <div class="links">
+      <a href="https://arxiv.org/abs/2506.09276">📄 Paper (arXiv)</a>
+      <a href="https://github.com/lorenzosteccanella/MinimumActionDistance">💻 Code</a>
+    </div>
+  </header>
+
+  <section>
+    <p class="lede">
+      We present a framework for learning the <strong>Minimum Action Distance (MAD)</strong> — the minimum number
+      of actions needed to move between two states. The resulting embedding gives a dense, geometrically
+      meaningful notion of progress that is useful for goal-conditioned RL, reward shaping, and planning.
+    </p>
+
+    <div class="callout">
+      <p class="callout-title">Learned entirely offline from state-only trajectories</p>
+      <div class="pill-row">
+        <span class="pill">no rewards</span>
+        <span class="pill">no goals</span>
+        <span class="pill">no recorded actions</span>
+      </div>
+    </div>
+
+    <figure>
+      <div class="fig-card">
+        <img src="assets/mad_representation.svg" alt="Schematic overview of MAD representation learning">
+      </div>
+      <figcaption>
+        From left to right: (1) the hidden environment graph, (2) trajectories collected by an unknown policy,
+        (3) the learned embedding function \(\phi: S \to \mathbb{R}^2\), and (4) the resulting MAD embedding space
+        in \(\mathbb{R}^2\), where distances between points reflect the minimum number of actions between the
+        corresponding states.
+      </figcaption>
+    </figure>
+  </section>
+
+  <section id="problem">
+    <h2>Problem Definition</h2>
+    <p>
+      Consider a Markov decision process \(\mathcal{M} = \langle \mathcal{S}, \mathcal{A}, \mathcal{R}, \mathcal{P}, \mathcal{D}, \gamma \rangle\).
+      For a fixed policy \(\pi\), define the minimum hitting time from state \(s\) to state \(s'\) as
+    </p>
+    <div class="box eq-scroll">
+      \[
+      T^{\pi}_{s \to s'} = \min\left\{ t \in \mathbb{N} \cup \{\infty\} : \mathbb{P}(S_t = s' \mid S_0 = s, \pi) > 0 \right\}.
+      \]
+    </div>
+    <p>
+      The <strong>Minimum Action Distance</strong> is the smallest such hitting time over all policies:
+    </p>
+    <div class="box eq-scroll">
+      \[
+      d_{\mathrm{MAD}}(s, s') = \inf_{\pi} T^{\pi}_{s \to s'}.
+      \]
+    </div>
+    <p>
+      In deterministic MDPs the MAD is always realizable by some policy; in stochastic MDPs it is a
+      <strong>lower bound</strong> on the number of steps required by any policy, since it depends only on the
+      <em>support</em> of the transition kernel rather than exact transition probabilities. This makes MAD robust
+      to stochasticity and agnostic to the data-collection policy.
+    </p>
+    <p>
+      Let \(R \subseteq \mathcal{S} \times \mathcal{S}\) be the one-step reachability relation:
+      \((s, s') \in R \iff \exists\, a \in \mathcal{A}\) such that \(\mathcal{P}(s' \mid s, a) > 0\). When \(\mathcal{S}\)
+      is finite, \(d_{\mathrm{MAD}}\) is exactly the all-pairs shortest-path distance on the directed graph
+      \((\mathcal{S}, R)\) with unit edge costs, computable via Floyd–Warshall.
+    </p>
+  </section>
+
+  <section id="from-constraints-to-quasimetric">
+    <h2>From a Global Constrained Optimization to a Learnable Objective</h2>
+    <p>
+      \(d_{\mathrm{MAD}}\) can equivalently be characterized as the unique solution to a constrained optimization
+      problem over the space of all pairwise distance functions:
+    </p>
+    <div class="box eq-scroll">
+      <div class="label">Objective</div>
+      \[
+      d_{\mathrm{MAD}} = \arg\max_{d} \sum_{(s,s') \in \mathcal{S}^2} d(s, s')
+      \]
+      \[
+      \text{s.t.}\quad
+      \underbrace{d(s,s) = 0 \ \ \forall s}_{\text{Identity}}, \qquad
+      \underbrace{d(s,s') \le 1 \ \ \forall (s,s') \in R}_{\text{One-step}}, \qquad
+      \underbrace{d(s,s') \le d(s,s'') + d(s'',s') \ \ \forall s,s',s''}_{\text{Triangle inequality}}
+      \]
+    </div>
+    <p>
+      Intuitively: the <em>one-step</em> constraint pulls directly-connected states close together, the
+      <em>triangle inequality</em> propagates that local structure globally across multi-step paths, and
+      maximizing the sum pushes every pair as far apart as the constraints allow — which is exactly the shortest-path
+      distance. This formulation is provably the unique pointwise-maximal feasible \(d\), but it is
+      <strong>intractable</strong> to optimize directly: for a continuous or large state space the states cannot be
+      enumerated, and the triangle-inequality constraint alone grows cubically in \(|\mathcal{S}|\).
+    </p>
+    <h3>Removing the triangle inequality by construction</h3>
+    <p>
+      Rather than imposing the triangle inequality as an explicit constraint, we enforce it <em>by construction</em>.
+      We learn a state embedding \(\phi_\theta : \mathcal{S} \to \mathbb{R}^k\) and define distances through a
+      <strong>quasimetric</strong> \(d_q\) applied to embedded states:
+    </p>
+    <div class="box eq-scroll">
+      \[
+      d_\theta(s, s') := d_q\big(\phi_\theta(s), \phi_\theta(s')\big).
+      \]
+    </div>
+    <p>
+      A quasimetric satisfies identity (\(d_q(x,x)=0\)), non-negativity, and the triangle inequality
+      (\(d_q(x,z) \le d_q(x,y) + d_q(y,z)\)) <strong>by definition</strong> — but, unlike a metric, it need not be
+      symmetric. Because \(d_\theta\) is a quasimetric for any choice of \(\phi_\theta\), the Identity and Triangle
+      Inequality constraints are satisfied automatically for free, and the optimization collapses to a single
+      remaining constraint:
+    </p>
+    <div class="box eq-scroll">
+      <div class="label">Simplified objective</div>
+      \[
+      \max_{\theta} \sum_{(s,s') \in \mathcal{S}^2} d_q\big(\phi_\theta(s), \phi_\theta(s')\big)
+      \quad \text{s.t.} \quad
+      d_q\big(\phi_\theta(s), \phi_\theta(s')\big) \le 1 \ \ \forall (s,s') \in R.
+      \]
+    </div>
+    <p>
+      This is still idealized, since the one-step relation \(R\) is generally unknown in offline data. The only
+      information available is upper bounds from observed trajectories: for a trajectory \(\tau = (s_0, \dots, s_T)\)
+      and indices \(i < j\), state \(s_j\) is reachable from \(s_i\) in \(j-i\) steps, so
+      \(d_{\mathrm{MAD}}(s_i, s_j) \le j - i\). Our learning objectives (below) are data-driven relaxations of this
+      simplified problem, replacing the unobserved one-step constraint with trajectory-derived upper bounds.
+    </p>
+  </section>
+
+  <section id="quasimetric">
+    <h2>A Simple, Efficient Quasimetric</h2>
+    <p>
+      Since the true MAD is inherently asymmetric (e.g. a one-way shortcut), we need \(d_q\) to support asymmetry. We introduce <code>d_simple</code>, a
+      lightweight quasimetric built from ReLU differences that is cheaper to compute than prior alternatives
+      (Wide Norm, Interval Quasimetric Embedding) while matching or outperforming them empirically:
+    </p>
+    <div class="box eq-scroll">
+      \[
+      d_{\text{simple}}(x, y) = \alpha \max\big(\mathrm{relu}(x - y)\big) + (1-\alpha)\, \frac{1}{d}\sum_{i=1}^{d} \mathrm{relu}(x_i - y_i),
+      \]
+    </div>
+    <p>
+      a weighted average of the maximum and mean positive coordinate-wise difference between embeddings, with
+      \(\alpha \in [0,1]\). It satisfies identity, non-negativity, and the triangle inequality by construction.
+    </p>
+  </section>
+
+  <section id="algorithms">
+    <h2>Algorithms</h2>
+    <p>
+      Both algorithms train a state embedding \(\phi_\theta\) together with a quasimetric \(d_q\) so that
+      \(d_\theta(s,s') = d_q(\phi_\theta(s), \phi_\theta(s'))\) approximates \(d_{\mathrm{MAD}}(s,s')\), using only
+      state trajectories \(\mathcal{D} = \{\tau_1, \tau_2, \dots\}\).
+    </p>
+
+    <h3>MadDist: direct distance learning</h3>
+    <p>MadDist minimizes a composite loss \(\mathcal{L} = \mathcal{L}_\tau + w_r \mathcal{L}_r + w_c \mathcal{L}_c\):</p>
+    <div class="grid-2">
+      <div class="card">
+        <h4>Trajectory objective \(\mathcal{L}_\tau\)</h4>
+        <p>Scale-invariant loss pushing \(d_\theta(s_i,s_j)/(j-i) \to 1\), so long-horizon pairs don't dominate.</p>
+      </div>
+      <div class="card">
+        <h4>Contrastive objective \(\mathcal{L}_r\)</h4>
+        <p>Pushes randomly sampled state pairs apart, supplying a global separation signal beyond same-trajectory pairs.</p>
+      </div>
+      <div class="card">
+        <h4>Constraint loss \(\mathcal{L}_c\)</h4>
+        <p>Explicitly penalizes violations of the trajectory upper bound \(d_\theta(s_i,s_j) \le j - i\).</p>
+      </div>
+      <div class="card">
+        <h4>Any quasimetric</h4>
+        <p>Compatible with <code>d_simple</code>, Wide Norm, or IQE — <code>d_simple</code> performs best in our ablations.</p>
+      </div>
+    </div>
+
+    <h3>TDMadDist: temporal-difference learning</h3>
+    <p>
+      TDMadDist bootstraps from a target network \(\phi_{\theta'}\), following the shortest-path Bellman identity
+      \(d_{\mathrm{MAD}}(s_i, s_j) = 1 + d_{\mathrm{MAD}}(s_{i+1}, s_j)\). The trajectory target becomes
+      \(\min(j-i,\ 1 + d_{\theta'}(s_{i+1}, s_j))\), letting the model propagate distance information beyond what a
+      single trajectory directly observes, at the cost of bootstrapping instability.
+    </p>
+  </section>
+
+  <section id="methodology">
+    <h2>Empirical Evaluation Methodology</h2>
+    <p>
+      We built a suite of environments with <strong>known ground-truth MAD</strong>, spanning deterministic and
+      stochastic dynamics, discrete and continuous state spaces, symmetric and strongly asymmetric transitions,
+      and noisy observations — enabling exact, quantitative evaluation of learned distances rather than relying
+      only on downstream task success.
+    </p>
+    <div class="env-strip">
+      <figure>
+        <div class="fig-card"><img src="assets/env_cliffwalking.png" alt="CliffWalking environment"></div>
+        <figcaption>CliffWalking</figcaption>
+      </figure>
+      <figure>
+        <div class="fig-card"><img src="assets/env_antmaze.png" alt="OGBench AntMaze environment"></div>
+        <figcaption>OGBench AntMaze</figcaption>
+      </figure>
+      <figure>
+        <div class="fig-card"><img src="assets/env_giantogbench.png" alt="OGBench Giant Maze environment"></div>
+        <figcaption>OGBench Giant Maze</figcaption>
+      </figure>
+    </div>
+    <p>
+      Environments include <strong>NoisyGridWorld</strong> (stochastic, noisy observations), <strong>KeyDoorGridWorld</strong>
+      (strong asymmetry via an irreversible key pickup), <strong>CliffWalking</strong> (asymmetry via a one-way cliff
+      shortcut), <strong>PointMaze</strong> / <strong>OGBench PointMaze</strong> (continuous control, long-horizon
+      navigate/stitch datasets), and <strong>OGBench AntMaze</strong> (high-dimensional quadruped control, including
+      an <em>explore</em> dataset collected by a purely random policy).
+    </p>
+    <h3>Metrics</h3>
+    <ul>
+      <li><strong>Spearman correlation (\(\rho\))</strong> — preservation of distance rankings between state pairs.</li>
+      <li><strong>Pearson correlation (\(r\))</strong> — linearity between predicted and true distances.</li>
+      <li><strong>Ratio coefficient of variation (CV)</strong> — consistency of the predicted/true distance ratio across state pairs.</li>
+    </ul>
+    <h3>Baselines</h3>
+    <p>
+      QRL (Wang et al., 2023) — locality-constrained quasimetric RL using IQE; PlanDist and PlanDist-Simple
+      (Steccanella &amp; Jonsson, 2022) — trajectory-supervised symmetric / quasimetric distance learning; and
+      Hilbert representations (Park et al., 2024) — offline goal-conditioned embeddings with a symmetric distance,
+      unable to capture MAD asymmetry.
+    </p>
+    <h3>Downstream planning</h3>
+    <p>
+      To isolate representation quality from policy-learning confounds, we pair each learned distance with a
+      deliberately simple random-shooting MPC planner and the <em>true</em> environment simulator, then measure
+      goal-reaching success — a controlled test of whether a more accurate MAD approximation translates into
+      better guidance for planning.
+    </p>
+  </section>
+
+  <section id="results">
+    <h2>Results</h2>
+    <p>
+      <strong>MadDist</strong> outperforms QRL, Hilbert, PlanDist, and PlanDist-Simple across environments,
+      learning a more accurate approximation of the MAD with higher correlation and lower ratio CV. The
+      comparison against PlanDist-Simple (same quasimetric, prior objective) shows the gains come from the
+      combination of asymmetric modeling <em>and</em> the revised objective — not the quasimetric alone.
+    </p>
+    <figure>
+      <div class="fig-card">
+        <img src="assets/results_cliffwalking_c.svg" alt="Pearson correlation on CliffWalking">
+      </div>
+      <figcaption>Pearson correlation over training on CliffWalking, a strongly asymmetric environment.</figcaption>
+    </figure>
+    <figure>
+      <div class="fig-card">
+        <img src="assets/results_pmgiant_stitch_c.svg" alt="Pearson correlation on OGBench PointMaze Giant Stitch">
+      </div>
+      <figcaption>Pearson correlation on OGBench PointMaze Giant (Stitch dataset) — long-horizon, trajectory-stitching setting.</figcaption>
+    </figure>
+    <figure>
+      <div class="fig-card">
+        <img src="assets/results_amexplore_c.svg" alt="Pearson correlation on OGBench AntMaze Medium Explore">
+      </div>
+      <figcaption>Pearson correlation on OGBench AntMaze Medium (Explore dataset) — undirected, purely random data.</figcaption>
+    </figure>
+    <figure>
+      <div class="fig-card">
+        <img src="assets/results_cliffwalking_r.svg" alt="Ratio CV on CliffWalking">
+      </div>
+      <figcaption>
+        Ratio coefficient of variation (lower is better / more consistent scaling) on CliffWalking, across five seeds.
+      </figcaption>
+    </figure>
+
+    <h3>Downstream planning success rate</h3>
+    <div class="table-scroll">
+    <table>
+      <thead>
+        <tr><th>Environment</th><th>PlanDist</th><th>PlanDist-Simple</th><th>QRL</th><th>TDMadDist</th><th>Hilbert</th><th>MadDist</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>AntMaze Medium Explore</td><td>0.19 ± 0.22</td><td>0.05 ± 0.12</td><td>0.49 ± 0.23</td><td>0.39 ± 0.25</td><td>0.01 ± 0.07</td><td class="best">0.80 ± 0.21</td></tr>
+        <tr><td>PointMaze Giant Navigate</td><td>0.69 ± 0.27</td><td>0.77 ± 0.23</td><td>0.87 ± 0.21</td><td class="best">0.99 ± 0.05</td><td>0.16 ± 0.17</td><td>0.93 ± 0.17</td></tr>
+        <tr><td>PointMaze Giant Stitch</td><td>0.58 ± 0.23</td><td>0.22 ± 0.27</td><td>0.95 ± 0.12</td><td>0.74 ± 0.26</td><td>0.05 ± 0.14</td><td class="best">0.99 ± 0.07</td></tr>
+        <tr><td>PointMaze Large Navigate</td><td>0.76 ± 0.25</td><td>0.99 ± 0.07</td><td>0.97 ± 0.09</td><td>0.70 ± 0.30</td><td>0.22 ± 0.20</td><td class="best">1.00 ± 0.00</td></tr>
+        <tr><td>PointMaze Large Stitch</td><td>0.45 ± 0.29</td><td>0.17 ± 0.23</td><td>0.90 ± 0.17</td><td>0.73 ± 0.24</td><td>0.17 ± 0.20</td><td class="best">1.00 ± 0.00</td></tr>
+        <tr><td>PointMaze Medium Navigate</td><td>0.77 ± 0.24</td><td>0.89 ± 0.17</td><td>0.86 ± 0.21</td><td>0.92 ± 0.16</td><td>0.55 ± 0.27</td><td class="best">1.00 ± 0.00</td></tr>
+        <tr><td>PointMaze Medium Stitch</td><td>0.61 ± 0.29</td><td>0.51 ± 0.29</td><td>0.81 ± 0.20</td><td>0.74 ± 0.24</td><td>0.67 ± 0.28</td><td class="best">1.00 ± 0.00</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p style="font-size:0.85rem; color:var(--text-dim);">Success rate ± standard deviation across five seeds; best result per row in bold.</p>
+
+    <figure>
+      <div class="fig-card">
+        <img src="assets/mad_landscape.png" alt="Learned MAD distance landscape on MediumMaze">
+      </div>
+      <figcaption>
+        Qualitative view: the MadDist-learned distance landscape from a fixed goal state across the MediumMaze
+        environment, aligning closely with the maze's wall structure and true shortest-path geometry.
+      </figcaption>
+    </figure>
+  </section>
+
+  <section id="cite">
+    <h2>Citation</h2>
+    <pre>@article{steccanella2025mad,
+  title   = {Learning the Minimum Action Distance},
+  author  = {Steccanella, Lorenzo and Evans, Joshua B. and {\c{S}}im{\c{s}}ek, {\"O}zg{\"u}r and Jonsson, Anders},
+  journal = {arXiv preprint arXiv:2506.09276},
+  year    = {2025}
+}</pre>
+  </section>
+
+  <footer>
+    Paper: <a href="https://arxiv.org/abs/2506.09276">arXiv:2506.09276</a> &nbsp;·&nbsp;
+    Code: <a href="https://github.com/lorenzosteccanella/MinimumActionDistance">github.com/lorenzosteccanella/MinimumActionDistance</a>
+  </footer>
+
+</div>
 </body>
 </html>
